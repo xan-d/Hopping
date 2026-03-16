@@ -1,17 +1,20 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const puppeteer = require('puppeteer');
 
 const app = express();
-app.use(express.json());
+const PORT = process.env.BACKEND_PORT || 3001;
 
-app.options(/.*/, cors());
+// Middleware
+app.use(express.json());
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type'],
 }));
 
+// ── METADATA FETCHING ──
 async function fetchMeta(url) {
   if (!url.startsWith('http')) return null;
 
@@ -61,13 +64,20 @@ async function fetchMeta(url) {
 
     await browser.close();
     return meta;
-
   } catch (err) {
     await browser.close();
     return { title: '', image: '', price: '' };
   }
 }
 
+// ── API ROUTES ──
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Fetch metadata from URL
 app.post('/api/fetch-meta', async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'Missing URL' });
@@ -77,15 +87,41 @@ app.post('/api/fetch-meta', async (req, res) => {
     res.json(meta);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Failed to fetch meta' });
+    res.status(500).json({ error: 'Failed to fetch metadata' });
   }
 });
 
-app.post('/api/push-item', (req, res) => {
-  const { title, image, price, url } = req.body;
-  if (!title && !url) return res.status(400).json({ error: 'Missing title or url' });
-  res.json({ ok: true, title, image, price, url });
+// Placeholder endpoints for items (for future database integration)
+app.get('/api/items', (req, res) => {
+  res.json({ items: [] });
 });
 
-const PORT = 3001;
-app.listen(PORT, () => console.log(`Wishlist API running on http://0.0.0.0:${PORT}`));
+app.post('/api/items', (req, res) => {
+  const { title, url, price, image, notes, board } = req.body;
+  if (!title && !url) return res.status(400).json({ error: 'Missing title or url' });
+  res.status(201).json({ success: true, message: 'Item saved' });
+});
+
+// Placeholder endpoints for boards
+app.get('/api/boards', (req, res) => {
+  res.json({ boards: [] });
+});
+
+app.post('/api/boards', (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'Missing board name' });
+  res.status(201).json({ success: true, message: 'Board created' });
+});
+
+// Error handling
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`✓ Server running on http://localhost:${PORT}`);
+  console.log(`✓ API endpoint: http://localhost:${PORT}/api`);
+  console.log(`✓ Health check: http://localhost:${PORT}/api/health`);
+});
