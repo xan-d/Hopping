@@ -113,6 +113,16 @@ app.post('/api/boards', (req, res) => {
   res.status(201).json({ success: true, message: 'Board created' });
 });
 
+const path = require('path');
+
+// Serve static frontend files
+app.use(express.static(path.join(__dirname, 'frontend/dist')));
+
+// Catch-all: send index.html for any non-API route (needed for React Router)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'frontend/dist/index.html'));
+});
+
 // Error handling
 app.use((err, req, res, next) => {
   console.error(err.stack);
