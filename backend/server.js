@@ -1,15 +1,17 @@
 require('dotenv').config();
 const express = require('express');
+const pool = require('./db');
 const cors = require('cors');
 const puppeteer = require('puppeteer');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || 3001;
+const frontendDistPath = path.resolve(__dirname, '../frontend/dist');
 
-// Middleware
 app.use(express.json());
 app.use(cors({
-  origin: '*',
+  origin: /.*/,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type'],
 }));
@@ -72,6 +74,66 @@ async function fetchMeta(url) {
 
 // ── API ROUTES ──
 
+app.post('/api/users', async (req, res) => {
+  const { username, email, password } = req.body;
+
+  try {
+    const result = await pool.query(
+      'SELECT create_user($1, $2, $3) AS id',
+      [username, email, password]
+    );
+
+    res.status(201).json({ id: result.rows[0].id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM get_user_by_id($1)',
+      [req.params.id]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+app.post('/api/items', async (req, res) => {
+  const { user_id, name, price, url, source_url } = req.body;
+
+  try {
+    const result = await pool.query(
+      'SELECT create_item($1, $2, $3, $4, $5) AS id',
+      [user_id, name, price, url, source_url]
+    );
+
+    res.status(201).json({ id: result.rows[0].id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to create item' });
+  }
+});
+
+app.get('/api/items/:id', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM get_item_by_id($1)',
+      [req.params.id]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch item' });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -91,36 +153,33 @@ app.post('/api/fetch-meta', async (req, res) => {
   }
 });
 
-// Placeholder endpoints for items (for future database integration)
-app.get('/api/items', (req, res) => {
-  res.json({ items: [] });
+
+// Get all items for a user (requires user_id as query param)
+app.get('/api/items', async (req, res) => {
+  const { user_id } = req.query;
+  if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
+  try {
+    const result = await pool.query(
+      'SELECT * FROM Items WHERE user_id = $1 ORDER BY date_added DESC',
+      [user_id]
+    );
+    res.json({ items: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch items' });
+  }
 });
 
-app.post('/api/items', (req, res) => {
-  const { title, url, price, image, notes, board } = req.body;
-  if (!title && !url) return res.status(400).json({ error: 'Missing title or url' });
-  res.status(201).json({ success: true, message: 'Item saved' });
-});
 
-// Placeholder endpoints for boards
-app.get('/api/boards', (req, res) => {
-  res.json({ boards: [] });
-});
+// Boards endpoints removed (no boards table in schema)
 
-app.post('/api/boards', (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: 'Missing board name' });
-  res.status(201).json({ success: true, message: 'Board created' });
-});
-
-const path = require('path');
 
 // Serve static frontend files
-app.use(express.static(path.join(__dirname, 'frontend/dist')));
+app.use(express.static(frontendDistPath));
 
 // Catch-all: send index.html for any non-API route (needed for React Router)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'frontend/dist/index.html'));
+app.get('/{*path}', (req, res) => {
+  res.sendFile(path.join(frontendDistPath, 'index.html'));
 });
 
 // Error handling
