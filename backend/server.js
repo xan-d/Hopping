@@ -1,17 +1,26 @@
 require('dotenv').config();
 const express = require('express');
-const pool = require('./db');
 const cors = require('cors');
 const puppeteer = require('puppeteer');
+const { Pool } = require('pg');
 const path = require('path');
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || 3001;
-const frontendDistPath = path.resolve(__dirname, '../frontend/dist');
 
+// ── DATABASE CONNECTION ──
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err);
+});
+
+// Middleware
 app.use(express.json());
 app.use(cors({
-  origin: /.*/,
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type'],
 }));
@@ -74,69 +83,196 @@ async function fetchMeta(url) {
 
 // ── API ROUTES ──
 
-app.post('/api/users', async (req, res) => {
-  const { username, email, password } = req.body;
-
+// Health check
+app.get('/api/health', async (req, res) => {
   try {
-    const result = await pool.query(
-      'SELECT create_user($1, $2, $3) AS id',
-      [username, email, password]
-    );
-
-    res.status(201).json({ id: result.rows[0].id });
+    const result = await pool.query('SELECT NOW()');
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      database: 'connected'
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to create user' });
+    res.status(500).json({
+      status: 'error',
+      error: err.message,
+      database: 'disconnected'
+    });
   }
 });
 
+// ── USERS ENDPOINTS ──
+
+// Create User
+app.post('/api/users', async (req, res) => {
+  const { username, email, password_hash } = req.body;
+
+  if (!username || !email || !password_hash) {
+    return res.status(400).json({ error: 'Missing required fields: username, email, password_hash' });
+  }
+
+  try {
+    const result = await pool.query(
+      'INSERT INTO Users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id',
+      [username, email, password_hash]
+    );
+    const userId = result.rows[0].id;
+    res.status(201).json({ success: true, id: userId, message: 'User created' });
+  } catch (err) {
+    console.error('Error creating user:', err);
+    res.status(500).json({ error: err.message || 'Failed to create user' });
+  }
+});
+
+// Get User by ID
 app.get('/api/users/:id', async (req, res) => {
+  const { id } = req.params;
+
   try {
     const result = await pool.query(
       'SELECT * FROM get_user_by_id($1)',
-      [req.params.id]
+      [id]
     );
-
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Failed to fetch user' });
+    res.status(500).json({ error: err.message });
   }
 });
 
+// Update User Email
+app.put('/api/users/:id', async (req, res) => {
+  const { id } = req.params;
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Missing email' });
+  }
+
+  try {
+    await pool.query(
+      'SELECT update_user_email($1, $2)',
+      [id, email]
+    );
+    res.json({ success: true, message: 'User updated' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete User
+app.delete('/api/users/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await pool.query(
+      'SELECT delete_user($1)',
+      [id]
+    );
+    res.json({ success: true, message: 'User deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── ITEMS ENDPOINTS ──
+
+// Create Item
 app.post('/api/items', async (req, res) => {
   const { user_id, name, price, url, source_url } = req.body;
 
+  if (!user_id || !name || !price) {
+    return res.status(400).json({ error: 'Missing required fields: user_id, name, price' });
+  }
+
   try {
     const result = await pool.query(
-      'SELECT create_item($1, $2, $3, $4, $5) AS id',
-      [user_id, name, price, url, source_url]
+      'INSERT INTO Items (user_id, name, price, url, source_url) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [user_id, name, price, url || null, source_url || null]
     );
-
-    res.status(201).json({ id: result.rows[0].id });
+    const itemId = result.rows[0].id;
+    res.status(201).json({ success: true, id: itemId, message: 'Item created' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to create item' });
+    console.error('Error creating item:', err);
+    res.status(500).json({ error: err.message || 'Failed to create item' });
   }
 });
 
+// Get Item by ID
 app.get('/api/items/:id', async (req, res) => {
+  const { id } = req.params;
+
   try {
     const result = await pool.query(
       'SELECT * FROM get_item_by_id($1)',
-      [req.params.id]
+      [id]
     );
-
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Failed to fetch item' });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Get All Items for a User
+app.get('/api/users/:user_id/items', async (req, res) => {
+  const { user_id } = req.params;
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM Items WHERE user_id = $1 ORDER BY date_added DESC',
+      [user_id]
+    );
+    res.json({ items: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update Item Price
+app.put('/api/items/:id', async (req, res) => {
+  const { id } = req.params;
+  const { price } = req.body;
+
+  if (!price) {
+    return res.status(400).json({ error: 'Missing price' });
+  }
+
+  try {
+    await pool.query(
+      'SELECT update_item_price($1, $2)',
+      [id, price]
+    );
+    res.json({ success: true, message: 'Item updated' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Item
+app.delete('/api/items/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await pool.query(
+      'SELECT delete_item($1)',
+      [id]
+    );
+    res.json({ success: true, message: 'Item deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Fetch metadata from URL
@@ -153,33 +289,12 @@ app.post('/api/fetch-meta', async (req, res) => {
   }
 });
 
-
-// Get all items for a user (requires user_id as query param)
-app.get('/api/items', async (req, res) => {
-  const { user_id } = req.query;
-  if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
-  try {
-    const result = await pool.query(
-      'SELECT * FROM Items WHERE user_id = $1 ORDER BY date_added DESC',
-      [user_id]
-    );
-    res.json({ items: result.rows });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch items' });
-  }
-});
-
-
-// Boards endpoints removed (no boards table in schema)
-
-
 // Serve static frontend files
-app.use(express.static(frontendDistPath));
+app.use(express.static(path.join(__dirname, '../frontend/dist')));
 
 // Catch-all: send index.html for any non-API route (needed for React Router)
-app.get('/{*path}', (req, res) => {
-  res.sendFile(path.join(frontendDistPath, 'index.html'));
+app.use((req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 
 // Error handling
@@ -193,4 +308,5 @@ app.listen(PORT, () => {
   console.log(`✓ Server running on http://localhost:${PORT}`);
   console.log(`✓ API endpoint: http://localhost:${PORT}/api`);
   console.log(`✓ Health check: http://localhost:${PORT}/api/health`);
+  console.log(`✓ Database: ${process.env.DATABASE_URL}`);
 });

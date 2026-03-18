@@ -1,27 +1,97 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { loadData, saveData } from '../utils/helpers';
 
+const API_URL = import.meta.env.VITE_API_URL || '';
+
+// Map a DB row to the shape the frontend expects
+function mapDbItem(row) {
+  return {
+    id: String(row.id),
+    title: row.name || '',
+    price: row.price,
+    url: row.url || '',
+    image: row.image || '',
+    purchased: row.purchased || false,
+    notes: row.notes || '',
+    addedAt: row.date_added || new Date().toISOString(),
+  };
+}
+
 export function useWishlist() {
-  const [state, setState] = useState(() => loadData());
+  const [state, setState] = useState(() => ({
+    ...loadData(),
+    loaded: false,
+  }));
+
+  // ── fetch items from backend on mount ──────────────────────────
+  useEffect(() => {
+    fetch(`${API_URL}/api/users/1/items`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.items) {
+          const items = data.items.map(mapDbItem);
+          setState(prev => ({ ...prev, items, loaded: true }));
+          saveData({ boards: state.boards, items });
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load items from database:', err);
+        setState(prev => ({ ...prev, loaded: true }));
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── persist helper ─────────────────────────────────────────────
   const update = useCallback((updater) => {
     setState(prev => {
       const next = updater(prev);
-      saveData(next);
+      saveData({ boards: next.boards, items: next.items });
       return next;
     });
   }, []);
 
   // ── items ──────────────────────────────────────────────────────
   const addItem = useCallback((item) => {
-    update(prev => ({
-      ...prev,
-      items: [{ ...item, id: Date.now().toString(), purchased: false, addedAt: new Date().toISOString() }, ...prev.items],
-    }));
+    const price = parseFloat(String(item.price || '0').replace(/[^0-9.]/g, '')) || 0;
+
+    // Persist to backend database first
+    fetch(`${API_URL}/api/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: 1, // TODO: replace with actual logged-in user id
+        name: item.title || item.name || '',
+        price,
+        url: item.url || null,
+        source_url: item.url || null,
+      }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        const newItem = {
+          id: String(data.id),
+          title: item.title || item.name || '',
+          price,
+          url: item.url || '',
+          image: item.image || '',
+          purchased: false,
+          notes: '',
+          addedAt: new Date().toISOString(),
+        };
+        update(prev => ({ ...prev, items: [newItem, ...prev.items] }));
+      })
+      .catch(err => {
+        console.error('Failed to save item to database:', err);
+        // Fallback: still add locally
+        const newItem = { ...item, id: Date.now().toString(), purchased: false, addedAt: new Date().toISOString() };
+        update(prev => ({ ...prev, items: [newItem, ...prev.items] }));
+      });
   }, [update]);
 
   const deleteItem = useCallback((id) => {
+    // Delete from backend
+    fetch(`${API_URL}/api/items/${id}`, { method: 'DELETE' })
+      .catch(err => console.error('Failed to delete item from database:', err));
+
     update(prev => ({ ...prev, items: prev.items.filter(i => i.id !== id) }));
   }, [update]);
 

@@ -1,27 +1,19 @@
 -- USERS
 CREATE TABLE Users (
   id SERIAL PRIMARY KEY,
-  username VARCHAR(100) NOT NULL,
-  email VARCHAR(255) UNIQUE NOT NULL,
+  username VARCHAR(50) NOT NULL UNIQUE,
+  email VARCHAR(100) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- BOARDS (optional but useful)
-CREATE TABLE Boards (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES Users(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- ITEMS (aligned with your DML)
+-- ITEMS
 CREATE TABLE Items (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES Users(id) ON DELETE CASCADE,
-  name VARCHAR(255),
-  price DECIMAL,
-  url TEXT,
-  source_url TEXT,
-  date_added TIMESTAMP DEFAULT NOW()
+  user_id INTEGER NOT NULL REFERENCES Users(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  price DECIMAL(10,2) NOT NULL,
+  date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  url VARCHAR(500),
+  source_url VARCHAR(500)
 );
