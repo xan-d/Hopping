@@ -1,15 +1,5 @@
 // ── STRING / DISPLAY HELPERS ───────────────────────────────────────
 
-export function esc(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 export function shortUrl(url) {
   try { return new URL(url).hostname.replace(/^www\./, ''); }
   catch { return url.slice(0, 30); }

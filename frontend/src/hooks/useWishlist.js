@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { loadData, saveData } from '../utils/helpers';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { fetchUserItems, createItem, deleteItemApi } from '../services/api';
 
 // Map a DB row to the shape the frontend expects
 function mapDbItem(row) {
@@ -25,14 +24,11 @@ export function useWishlist() {
 
   // ── fetch items from backend on mount ──────────────────────────
   useEffect(() => {
-    fetch(`${API_URL}/api/users/1/items`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.items) {
-          const items = data.items.map(mapDbItem);
-          setState(prev => ({ ...prev, items, loaded: true }));
-          saveData({ boards: state.boards, items });
-        }
+    fetchUserItems(1)
+      .then(rows => {
+        const items = rows.map(mapDbItem);
+        setState(prev => ({ ...prev, items, loaded: true }));
+        saveData({ boards: state.boards, items });
       })
       .catch(err => {
         console.error('Failed to load items from database:', err);
@@ -53,20 +49,14 @@ export function useWishlist() {
   const addItem = useCallback((item) => {
     const price = parseFloat(String(item.price || '0').replace(/[^0-9.]/g, '')) || 0;
 
-    // Persist to backend database first
-    fetch(`${API_URL}/api/items`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: 1, // TODO: replace with actual logged-in user id
-        name: item.title || item.name || '',
-        price,
-        url: item.url || null,
-        source_url: item.url || null,
-        image: item.image || null,
-      }),
+    createItem({
+      user_id: 1, // TODO: replace with actual logged-in user id
+      name: item.title || item.name || '',
+      price,
+      url: item.url || null,
+      source_url: item.url || null,
+      image: item.image || null,
     })
-      .then(res => res.json())
       .then(data => {
         const newItem = {
           id: String(data.id),
@@ -82,17 +72,13 @@ export function useWishlist() {
       })
       .catch(err => {
         console.error('Failed to save item to database:', err);
-        // Fallback: still add locally
         const newItem = { ...item, id: Date.now().toString(), purchased: false, addedAt: new Date().toISOString() };
         update(prev => ({ ...prev, items: [newItem, ...prev.items] }));
       });
   }, [update]);
 
   const deleteItem = useCallback((id) => {
-    // Delete from backend
-    fetch(`${API_URL}/api/items/${id}`, { method: 'DELETE' })
-      .catch(err => console.error('Failed to delete item from database:', err));
-
+    deleteItemApi(id).catch(err => console.error('Failed to delete item from database:', err));
     update(prev => ({ ...prev, items: prev.items.filter(i => i.id !== id) }));
   }, [update]);
 

@@ -1,8 +1,8 @@
 import { cleanTitle, formatPrice } from '../utils/helpers';
 
+const API_URL = import.meta.env.VITE_API_URL || '';
+
 // ── META FETCH ─────────────────────────────────────────────────────
-// Uses allorigins.win as a CORS proxy to scrape OG meta tags.
-// For sites that block scrapers (Amazon etc.) the bookmarklet is more reliable.
 
 function getMeta(doc, names) {
   for (const name of names) {
@@ -52,4 +52,25 @@ export async function fetchProductMeta(url) {
     image,
     price: formatPrice(price),
   };
+}
+
+// ── ITEM CRUD ──────────────────────────────────────────────────────
+
+export async function fetchUserItems(userId) {
+  const res = await fetch(`${API_URL}/api/users/${userId}/items`);
+  const data = await res.json();
+  return data.items || [];
+}
+
+export async function createItem({ user_id, name, price, url, source_url, image }) {
+  const res = await fetch(`${API_URL}/api/items`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id, name, price, url, source_url, image }),
+  });
+  return res.json();
+}
+
+export async function deleteItemApi(id) {
+  return fetch(`${API_URL}/api/items/${id}`, { method: 'DELETE' });
 }
