@@ -184,7 +184,7 @@ app.delete('/api/users/:id', async (req, res) => {
 
 // Create Item
 app.post('/api/items', async (req, res) => {
-  const { user_id, name, price, url, source_url } = req.body;
+  const { user_id, name, price, url, source_url, image } = req.body;
 
   if (!user_id || !name || !price) {
     return res.status(400).json({ error: 'Missing required fields: user_id, name, price' });
@@ -192,8 +192,8 @@ app.post('/api/items', async (req, res) => {
 
   try {
     const result = await pool.query(
-      'INSERT INTO Items (user_id, name, price, url, source_url) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-      [user_id, name, price, url || null, source_url || null]
+      'INSERT INTO Items (user_id, name, price, url, source_url, image) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+      [user_id, name, price, url || null, source_url || null, image || null]
     );
     const itemId = result.rows[0].id;
     res.status(201).json({ success: true, id: itemId, message: 'Item created' });

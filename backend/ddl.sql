@@ -15,5 +15,6 @@ CREATE TABLE Items (
   price DECIMAL(10,2) NOT NULL,
   date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   url VARCHAR(500),
-  source_url VARCHAR(500)
+  source_url VARCHAR(500),
+  image VARCHAR(1000)
 );

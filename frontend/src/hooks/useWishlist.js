@@ -63,6 +63,7 @@ export function useWishlist() {
         price,
         url: item.url || null,
         source_url: item.url || null,
+        image: item.image || null,
       }),
     })
       .then(res => res.json())
